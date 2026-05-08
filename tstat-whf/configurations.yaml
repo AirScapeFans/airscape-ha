@@ -1,0 +1,28 @@
+template:
+  - binary_sensor:
+      - name: WHF Favorable Conditions
+        unique_id: whf_favorable_conditions
+        icon: mdi:fan
+        state: >
+          {% set outdoor = states('sensor.outside_avg_temp') | float(none) %}
+          {% set upstairs = states('sensor.upstairs_temp_avg') | float(none) %}
+          {% set downstairs = states('sensor.entry_temp_avg') | float(none) %}
+          {% set setpoint = states('number.midea_xye_bridge_set_point') | float(none) %}
+
+          {% if outdoor is none or upstairs is none or downstairs is none or setpoint is none %}
+            false
+          {% else %}
+            {% set indoor_reference = [upstairs, downstairs] | max %}
+            {% set outdoor_cooler_by = indoor_reference - outdoor %}
+
+            {{
+              indoor_reference > setpoint + 1
+              and outdoor < setpoint
+              and outdoor_cooler_by >= 4
+            }}
+          {% endif %}
+        attributes:
+          logic: >
+            WHF is favorable when the warmest indoor zone is above the XYE set point,
+            outdoor air is below the set point, and outdoor air is at least 4°F cooler
+            than the warmest indoor zone.

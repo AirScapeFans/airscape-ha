@@ -1,0 +1,113 @@
+- id: xye_mode_based_on_temp_gap
+- alias: XYE Mode Based on Temperature Gap and WHF Status
+  id: xye_mode_based_on_temp_gap_and_whf_status
+  description: >
+    Sets the Midea XYE operating mode based on upstairs/downstairs temperature gap,
+    unless the whole-house fan is active or WHF conditions are favorable.
+
+  mode: single
+
+  triggers:
+    - trigger: state
+      entity_id:
+        - sensor.entry_temp_avg
+        - sensor.upstairs_temp_avg
+        - number.midea_xye_bridge_set_point
+        - select.midea_xye_bridge_operating_mode
+        - switch.whf_outlet
+        - binary_sensor.whf_favorable_conditions
+
+  variables:
+    downstairs_temp: "{{ states('sensor.entry_temp_avg') | float(none) }}"
+    upstairs_temp: "{{ states('sensor.upstairs_temp_avg') | float(none) }}"
+    xye_setpoint: "{{ states('number.midea_xye_bridge_set_point') | float(none) }}"
+    deadband: 5
+    tgap: >
+      {% if downstairs_temp is none or upstairs_temp is none %}
+        {{ none }}
+      {% else %}
+        {{ (upstairs_temp - downstairs_temp) | abs }}
+      {% endif %}
+    current_mode: "{{ states('select.midea_xye_bridge_operating_mode') }}"
+    whf_active: "{{ is_state('switch.whf_outlet', 'on') }}"
+    whf_favorable: "{{ is_state('binary_sensor.whf_favorable_conditions', 'on') }}"
+
+  actions:
+    - choose:
+        # Highest priority:
+        # If WHF is running, or conditions are favorable for WHF use,
+        # turn the central AC system off.
+        - conditions:
+            - condition: template
+              value_template: "{{ whf_active or whf_favorable }}"
+            - condition: template
+              value_template: "{{ current_mode != 'off' }}"
+          sequence:
+            - action: select.select_option
+              target:
+                entity_id: select.midea_xye_bridge_operating_mode
+              data:
+                option: "off"
+
+        # Normal logic:
+        # If temperature gap is greater than deadband and upstairs is warmer
+        # than the XYE set point, use cooling.
+        - conditions:
+            - condition: template
+              value_template: >
+                {{
+                  not whf_active
+                  and not whf_favorable
+                  and tgap is not none
+                  and upstairs_temp is not none
+                  and xye_setpoint is not none
+                  and tgap | float > deadband | float
+                  and upstairs_temp | float > xye_setpoint | float
+                  and current_mode != 'cool'
+                }}
+          sequence:
+            - action: select.select_option
+              target:
+                entity_id: select.midea_xye_bridge_operating_mode
+              data:
+                option: "cool"
+
+        # If temperature gap is greater than deadband and upstairs is colder
+        # than the XYE set point, use heating.
+        - conditions:
+            - condition: template
+              value_template: >
+                {{
+                  not whf_active
+                  and not whf_favorable
+                  and tgap is not none
+                  and upstairs_temp is not none
+                  and xye_setpoint is not none
+                  and tgap | float > deadband | float
+                  and upstairs_temp | float < xye_setpoint | float
+                  and current_mode != 'heat'
+                }}
+          sequence:
+            - action: select.select_option
+              target:
+                entity_id: select.midea_xye_bridge_operating_mode
+              data:
+                option: "heat"
+
+        # If temperature gap is within deadband, use fan only.
+        - conditions:
+            - condition: template
+              value_template: >
+                {{
+                  not whf_active
+                  and not whf_favorable
+                  and tgap is not none
+                  and tgap | float <= deadband | float
+                  and current_mode != 'fan_only'
+                }}
+          sequence:
+            - action: select.select_option
+              target:
+                entity_id: select.midea_xye_bridge_operating_mode
+              data:
+                option: "fan_only"
