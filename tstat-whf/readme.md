@@ -7,7 +7,7 @@
 -If tgap > deadband, choose cool or heat based on upstairs temp vs XYE set point
 -If upstairs temp exactly equals the set point, do nothing
 
-# Reactive and premptive lockoutø 
+# Reactive and preemptive lockout 
 if WHF is actually on OR WHF conditions are favorable:
     set AC = off
 else:
